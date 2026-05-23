@@ -1,0 +1,12 @@
+-- Seeder lengkap: Categories + Products + Gambar
+--
+-- Dari folder backend:
+--   npm run db:seed
+--
+-- Manual (jalankan file utuh, bukan per-query di phpMyAdmin):
+--   node scripts/seed-images.js
+--   mysql -u root -p penjualan_parfum < sql/seed_categories.sql
+--   mysql -u root -p penjualan_parfum < sql/seed_products.sql
+--
+-- Jika error FK #1701 saat truncate, gunakan:
+--   mysql -u root -p penjualan_parfum < sql/seed_reset.sql
