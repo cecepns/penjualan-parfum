@@ -35,7 +35,7 @@ export default function LoginPage() {
             <Sparkles className="h-7 w-7 text-white" />
           </div>
           <h1 className="mt-4 text-2xl font-bold text-gray-900">Admin Login</h1>
-          <p className="mt-1 text-sm text-gray-500">Sistem Penjualan Parfum UMKM</p>
+          <p className="mt-1 text-sm text-gray-500">Sistem Penjualan Parfum Rajawali Cepu</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -1,5 +1,5 @@
 -- Database: penjualan_parfum
--- Sistem Informasi Penjualan Parfum UMKM
+-- Sistem Informasi Penjualan Parfum Rajawali Cepu
 
 CREATE DATABASE IF NOT EXISTS penjualan_parfum;
 USE penjualan_parfum;
@@ -112,7 +112,7 @@ INSERT INTO delivery_areas (name, kecamatan, delivery_fee) VALUES
 -- Settings
 INSERT INTO settings (setting_key, setting_value) VALUES
 ('whatsapp_number', '6281234567890'),
-('store_name', 'Toko Parfum UMKM'),
+('store_name', 'Toko Parfum Rajawali Cepu'),
 ('store_address', 'Jl. Raya Cepu, Kab. Blora, Jawa Tengah'),
 ('store_phone', '081234567890'),
 ('pickup_info', 'Pick-up store tersedia di lokasi toko. Jam operasional: 08.00 - 20.00 WIB');

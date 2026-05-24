@@ -12,7 +12,7 @@ export default function Footer({ settings }) {
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
               <span className="text-lg font-bold text-white">
-                {settings?.store_name || "Parfum UMKM"}
+                {settings?.store_name || "Parfum Rajawali Cepu"}
               </span>
             </div>
             <p className="mt-4 text-sm">
@@ -51,7 +51,7 @@ export default function Footer({ settings }) {
           </div>
         </div>
         <div className="mt-8 border-t border-gray-800 pt-8 text-center text-sm">
-          © {new Date().getFullYear()} Sistem Penjualan Parfum UMKM — Rancang Bangun Sistem Informasi
+          © {new Date().getFullYear()} Sistem Penjualan Parfum Rajawali Cepu — Rancang Bangun Sistem Informasi
         </div>
       </div>
     </footer>

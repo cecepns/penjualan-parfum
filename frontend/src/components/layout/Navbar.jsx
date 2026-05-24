@@ -18,7 +18,7 @@ export default function Navbar() {
             <Sparkles className="h-5 w-5 text-white" />
           </div>
           <div>
-            <span className="text-lg font-bold text-gray-900">Parfum UMKM</span>
+            <span className="text-lg font-bold text-gray-900">Parfum Rajawali Cepu</span>
             <p className="text-xs text-gray-500">Cepu • Pick-Up & Delivery</p>
           </div>
         </Link>

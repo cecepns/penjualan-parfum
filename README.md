@@ -1,4 +1,4 @@
-# Sistem Informasi Penjualan Parfum UMKM
+# Sistem Informasi Penjualan Parfum Rajawali Cepu
 
 Rancang Bangun Sistem Informasi Penjualan Parfum Berbasis Website dengan Integrasi WhatsApp dan Metode Pick-Up Store pada UMKM — termasuk **sistem pengantaran barang sekitar Kota Cepu**.
 

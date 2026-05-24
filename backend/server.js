@@ -836,7 +836,7 @@ app.put("/api/admin/settings", authMiddleware, async (req, res) => {
 
 // Health check
 app.get("/api/health", (_, res) => {
-  res.json({ success: true, message: "API Penjualan Parfum UMKM berjalan" });
+  res.json({ success: true, message: "API Penjualan Parfum Rajawali Cepu berjalan" });
 });
 
 app.use((err, _, res, __) => {

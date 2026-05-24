@@ -77,7 +77,7 @@ function createSvg(product) {
   <text x="200" y="178" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-family="system-ui,sans-serif" font-size="13" font-weight="600" letter-spacing="1">${escapeXml(colors.label.toUpperCase())}</text>
   <text x="200" y="${line2 ? 218 : 228}" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="22" font-weight="700">${line1}</text>
   ${line2 ? `<text x="200" y="238" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="22" font-weight="700">${line2}</text>` : ""}
-  <text x="200" y="360" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui,sans-serif" font-size="11">Parfum UMKM Cepu</text>
+  <text x="200" y="360" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui,sans-serif" font-size="11">Parfum Rajawali Cepu Cepu</text>
 </svg>`;
 }
 
