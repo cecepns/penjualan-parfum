@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { api } from "@/utils/api";
 import { API_ENDPOINTS } from "@/utils/endpoints";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 import ProductCard from "@/components/ui/ProductCard";
 import Pagination from "@/components/ui/Pagination";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -21,6 +22,8 @@ export default function CatalogPage() {
   const category = searchParams.get("category") || "";
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "12");
+
+  useScrollToTop(page, category, debouncedSearch);
 
   useEffect(() => {
     api.get(API_ENDPOINTS.CATEGORIES.LIST).then((res) => setCategories(res.data.data));
@@ -112,7 +115,7 @@ export default function CatalogPage() {
         <EmptyState title="Produk tidak ditemukan" description="Coba kata kunci atau kategori lain" />
       ) : (
         <>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
               <ProductCard key={p.id} product={p} />
             ))}

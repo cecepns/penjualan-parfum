@@ -19,16 +19,16 @@ export default function ProductCard({ product }) {
           />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <Package className="h-16 w-16 text-gray-300" />
+            <Package className="h-10 w-10 text-gray-300 sm:h-16 sm:w-16" />
           </div>
         )}
       </div>
-      <div className="p-4">
-        <span className="text-xs font-medium text-primary-600">{product.category_name}</span>
-        <h3 className="mt-1 line-clamp-2 font-semibold text-gray-900 group-hover:text-primary-600">
+      <div className="p-3 sm:p-4">
+        <span className="text-[10px] font-medium text-primary-600 sm:text-xs">{product.category_name}</span>
+        <h3 className="mt-0.5 line-clamp-2 text-sm font-semibold text-gray-900 group-hover:text-primary-600 sm:mt-1 sm:text-base">
           {product.name}
         </h3>
-        <p className="mt-2 text-lg font-bold text-primary-700">{priceDisplay}</p>
+        <p className="mt-1.5 text-base font-bold text-primary-700 sm:mt-2 sm:text-lg">{priceDisplay}</p>
         {usesPricePerMl(product) && product.bottle_type && (
           <p className="mt-1 text-xs text-gray-500">
             {product.bottle_type} • {product.bottle_size}

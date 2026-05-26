@@ -4,6 +4,7 @@ import { ArrowLeft, MessageCircle, Package, Store, Truck } from "lucide-react";
 import { api } from "@/utils/api";
 import { API_ENDPOINTS } from "@/utils/endpoints";
 import { formatCurrency, getImageUrl, usesPricePerMl } from "@/utils/format";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import OrderModal from "@/components/order/OrderModal";
 
@@ -13,6 +14,8 @@ export default function ProductDetailPage() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [orderOpen, setOrderOpen] = useState(false);
+
+  useScrollToTop(slug);
 
   useEffect(() => {
     Promise.all([
