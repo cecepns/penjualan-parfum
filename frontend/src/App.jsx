@@ -11,6 +11,7 @@ import ProductsPage from "@/pages/admin/ProductsPage";
 import CategoriesPage from "@/pages/admin/CategoriesPage";
 import DeliveryAreasPage from "@/pages/admin/DeliveryAreasPage";
 import OrdersPage from "@/pages/admin/OrdersPage";
+import SettingsPage from "@/pages/admin/SettingsPage";
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="produk" element={<ProductsPage />} />
           <Route path="pengantaran" element={<DeliveryAreasPage />} />
           <Route path="pesanan" element={<OrdersPage />} />
+          <Route path="pengaturan" element={<SettingsPage />} />
         </Route>
       </Routes>
     </AuthProvider>

@@ -130,7 +130,7 @@ export default function ProductDetailPage() {
         isOpen={orderOpen}
         onClose={() => setOrderOpen(false)}
         product={product}
-        whatsappNumber={settings?.whatsapp_number}
+        whatsappNumber={settings?.whatsapp_number || "62882007832073"}
       />
     </div>
   );

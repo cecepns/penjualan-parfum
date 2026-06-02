@@ -8,6 +8,7 @@ import {
   Sparkles,
   Tags,
   Truck,
+  Settings,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
@@ -17,6 +18,7 @@ const links = [
   { to: "/admin/produk", label: "Kelola Produk", icon: Package },
   { to: "/admin/pengantaran", label: "Area Pengantaran", icon: Truck },
   { to: "/admin/pesanan", label: "Lihat Pesanan", icon: ShoppingCart },
+  { to: "/admin/pengaturan", label: "Pengaturan", icon: Settings },
 ];
 
 export default function AdminSidebar({ open, onClose }) {
