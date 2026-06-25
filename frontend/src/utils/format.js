@@ -1,5 +1,7 @@
 import { getUploadUrl } from "@/utils/config";
 
+export const STOCK_ML_PER_UNIT = 400;
+
 export function formatCurrency(amount) {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -18,22 +20,51 @@ export function formatDate(dateStr) {
   }).format(new Date(dateStr));
 }
 
+export function isCustomSale(product) {
+  return product?.sale_type === "custom" || usesPricePerMl(product);
+}
+
+export function isRegularSale(product) {
+  return product?.sale_type === "regular" || (!isCustomSale(product) && parseFloat(product?.price) > 0);
+}
+
 export function usesPricePerMl(product) {
-  return product?.price_per_ml != null && parseFloat(product.price_per_ml) > 0;
+  return isCustomSale(product) && product?.price_per_ml != null && parseFloat(product.price_per_ml) > 0;
+}
+
+export function formatStockDisplay(product) {
+  if (product?.stock_display) return product.stock_display;
+  return `${product?.stock || 0} buah - ${product?.remaining_ml || 0}ml`;
 }
 
 export function getProductPriceDisplay(product) {
-  if (usesPricePerMl(product)) {
-    return `${formatCurrency(product.price_per_ml)}/ml`;
+  if (isCustomSale(product)) {
+    return `${formatCurrency(product.price_per_ml)}/ml + harga botol`;
   }
-  return formatCurrency(product.price);
+  return formatCurrency(product.price || 25000);
 }
 
-export function getProductUnitPrice(product) {
-  if (usesPricePerMl(product)) {
-    return parseFloat(product.price_per_ml);
+export function getSaleTypeLabel(product) {
+  return isCustomSale(product) ? "Custom (botol + parfum/ml)" : "Reguler (harga tetap)";
+}
+
+export function calculateOrderPrice(product, { bottleOption, quantity = 1 }) {
+  const qty = parseInt(quantity) || 1;
+  if (isRegularSale(product)) {
+    return (parseFloat(product.price) || 25000) * qty;
   }
-  return parseFloat(product.price) || 0;
+  if (!bottleOption) return 0;
+  const bottlePrice = parseFloat(bottleOption.bottle_price) || 0;
+  const perfumePrice = (parseFloat(product.price_per_ml) || 0) * (parseInt(bottleOption.size_ml) || 0);
+  return (bottlePrice + perfumePrice) * qty;
+}
+
+export function getBottleTypes(options = []) {
+  return [...new Set(options.map((o) => o.bottle_type).filter(Boolean))];
+}
+
+export function getSizesForBottleType(options = [], bottleType) {
+  return options.filter((o) => o.bottle_type === bottleType);
 }
 
 export function getImageUrl(imageUrl) {
@@ -47,31 +78,52 @@ export function buildWhatsAppUrl(phone, message) {
 }
 
 export function buildOrderMessage(product, orderDetails = {}) {
-  const { customerName, quantity, deliveryType, deliveryArea, address, notes } =
-    orderDetails;
+  const {
+    customerName,
+    customerPhone,
+    quantity,
+    deliveryType,
+    kecamatan,
+    deliveryArea,
+    address,
+    notes,
+    bottleType,
+    bottleSize,
+    sizeMl,
+    totalPrice,
+    orderCode,
+    saleType,
+  } = orderDetails;
 
-  let msg = `Hallo kak, saya ingin membeli ${product.category_name?.toLowerCase() || "produk"} (${product.name})`;
+  let msg = `Halo kak, saya ingin membeli ${product.name}`;
+  msg += `\nKategori: ${product.category_name || "-"}`;
 
-  if (usesPricePerMl(product)) {
-    msg += `\nHarga: ${formatCurrency(product.price_per_ml)}/ml`;
-    if (product.bottle_type) msg += `\nJenis Botol: ${product.bottle_type}`;
-    if (product.bottle_size) msg += `\nUkuran: ${product.bottle_size}`;
-  } else if (product.price) {
-    msg += `\nHarga: ${formatCurrency(product.price)}`;
-    if (product.bottle_size) msg += `\nUkuran: ${product.bottle_size}`;
+  if (saleType === "regular" || isRegularSale(product)) {
+    msg += `\nTipe: Penjualan Reguler`;
+    msg += `\nHarga: ${formatCurrency(product.price || 25000)}`;
+  } else {
+    msg += `\nTipe: Penjualan Custom`;
+    msg += `\nHarga parfum: ${formatCurrency(product.price_per_ml)}/ml`;
+    if (bottleType) msg += `\nJenis Botol: ${bottleType}`;
+    if (bottleSize || sizeMl) msg += `\nUkuran: ${bottleSize || `${sizeMl}ml`}`;
   }
 
-  if (customerName) msg += `\n\nNama: ${customerName}`;
+  msg += `\n\nNama: ${customerName || "-"}`;
+  if (customerPhone) msg += `\nNo. HP: ${customerPhone}`;
   if (quantity) msg += `\nJumlah: ${quantity}`;
+  if (totalPrice) msg += `\nTotal: ${formatCurrency(totalPrice)}`;
+  if (orderCode) msg += `\nKode Pesanan: ${orderCode}`;
+
   if (deliveryType === "pickup") {
-    msg += `\nMetode: Pick-Up Store (Ambil di toko)`;
+    msg += `\nMetode: Pick-Up Store`;
   } else if (deliveryType === "delivery") {
     msg += `\nMetode: Pengantaran (Area Cepu)`;
-    if (deliveryArea) msg += `\nArea: ${deliveryArea}`;
+    if (kecamatan) msg += `\nKecamatan: ${kecamatan}`;
+    if (deliveryArea) msg += `\nKelurahan: ${deliveryArea}`;
     if (address) msg += `\nAlamat: ${address}`;
   }
-  if (notes) msg += `\nCatatan: ${notes}`;
 
+  if (notes) msg += `\nCatatan: ${notes}`;
   return msg;
 }
 
@@ -85,9 +137,8 @@ export const ORDER_STATUS = {
   cancelled: { label: "Dibatalkan", color: "bg-red-100 text-red-800" },
 };
 
-export const CATEGORY_ICONS = {
-  parfum: "Sparkles",
-  "wangi-wanita": "Sparkles",
-  "wangi-pria": "Sparkles",
-  "wangi-unisex": "Sparkles",
-};
+export const CATEGORY_DEFINITION =
+  "Kategori adalah pengelompokan aroma/produk (contoh: Wangi Wanita, Wangi Pria) untuk memudahkan filter di katalog.";
+
+export const CATALOG_DEFINITION =
+  "Katalog adalah halaman publik yang menampilkan seluruh produk parfum yang bisa dipesan customer, dapat difilter berdasarkan kategori.";

@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { api } from "@/utils/api";
 import { API_ENDPOINTS } from "@/utils/endpoints";
 import { useDebounce } from "@/hooks/useDebounce";
-import { getImageUrl, getProductPriceDisplay } from "@/utils/format";
+import { formatCurrency, getImageUrl, getProductPriceDisplay, getSaleTypeLabel, formatStockDisplay, isCustomSale } from "@/utils/format";
 import ProductFormModal from "@/components/admin/ProductFormModal";
 import Pagination from "@/components/ui/Pagination";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -150,6 +150,7 @@ export default function ProductsPage() {
               <tr className="text-left text-gray-500">
                 <th className="px-4 py-3">Produk</th>
                 <th className="px-4 py-3">Kategori</th>
+                <th className="px-4 py-3">Tipe</th>
                 <th className="px-4 py-3">Harga</th>
                 <th className="px-4 py-3">Stok</th>
                 <th className="px-4 py-3">Status</th>
@@ -170,8 +171,9 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">{p.category_name}</td>
+                  <td className="px-4 py-3 text-xs">{getSaleTypeLabel(p)}</td>
                   <td className="px-4 py-3">{getProductPriceDisplay(p)}</td>
-                  <td className="px-4 py-3">{p.stock}</td>
+                  <td className="px-4 py-3">{formatStockDisplay(p)}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${

@@ -8,8 +8,10 @@ import { formatCurrency, formatDate, ORDER_STATUS } from "@/utils/format";
 import Pagination from "@/components/ui/Pagination";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
+import { useAuth } from "@/context/AuthContext";
 
 export default function OrdersPage() {
+  const { isAdmin } = useAuth();
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,11 @@ export default function OrdersPage() {
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900">Lihat Pesanan</h2>
-      <p className="mt-1 text-gray-600">Kelola pesanan dari customer via WhatsApp</p>
+      <p className="mt-1 text-gray-600">
+        {isAdmin
+          ? "Kelola pesanan customer — admin dapat mengubah status"
+          : "Lihat pesanan customer — operator hanya dapat melihat"}
+      </p>
 
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="relative flex-1 max-w-md">
@@ -151,6 +157,9 @@ export default function OrdersPage() {
                         <p><strong>Alamat:</strong> {order.customer_address}</p>
                       )}
                       <p><strong>Jumlah:</strong> {order.quantity}</p>
+                      {order.bottle_type && (
+                        <p><strong>Botol:</strong> {order.bottle_type} {order.bottle_size}</p>
+                      )}
                       <p><strong>Total:</strong> {formatCurrency(order.total_price)}</p>
                       {order.delivery_fee > 0 && (
                         <p><strong>Ongkir:</strong> {formatCurrency(order.delivery_fee)}</p>
@@ -161,25 +170,31 @@ export default function OrdersPage() {
                     )}
                     <p className="mt-2 text-xs text-gray-400">{formatDate(order.created_at)}</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={order.status}
-                      onChange={(e) => updateStatus(order.id, e.target.value)}
-                      className="input-field w-auto text-sm"
-                    >
-                      {Object.entries(ORDER_STATUS).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => handleDelete(order)}
-                      className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  {isAdmin ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={order.status}
+                        onChange={(e) => updateStatus(order.id, e.target.value)}
+                        className="input-field w-auto text-sm"
+                      >
+                        {Object.entries(ORDER_STATUS).map(([k, v]) => (
+                          <option key={k} value={k}>
+                            {v.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleDelete(order)}
+                        className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>
+                      {st.label}
+                    </span>
+                  )}
                 </div>
               </div>
             );

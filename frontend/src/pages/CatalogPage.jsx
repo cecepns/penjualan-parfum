@@ -9,6 +9,7 @@ import ProductCard from "@/components/ui/ProductCard";
 import Pagination from "@/components/ui/Pagination";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
+import { CATEGORY_DEFINITION, CATALOG_DEFINITION } from "@/utils/format";
 
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -55,8 +56,9 @@ export default function CatalogPage() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Katalog Produk</h1>
-        <p className="mt-2 text-gray-600">
-          Katalog parfum refill — berbagai aroma, harga per ml, jenis botol & ukuran
+        <p className="mt-2 text-gray-600">{CATALOG_DEFINITION}</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Gunakan filter kategori untuk melihat produk berdasarkan pengelompokan aroma.
         </p>
       </div>
 

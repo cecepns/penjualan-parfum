@@ -8,6 +8,7 @@ import CategoryFormModal from "@/components/admin/CategoryFormModal";
 import Pagination from "@/components/ui/Pagination";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
+import { CATEGORY_DEFINITION } from "@/utils/format";
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState([]);
@@ -94,7 +95,7 @@ export default function CategoriesPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Kelola Kategori</h2>
-          <p className="text-gray-600">Kategori parfum dinamis untuk katalog</p>
+          <p className="text-gray-600">{CATEGORY_DEFINITION}</p>
         </div>
         <button
           onClick={() => {

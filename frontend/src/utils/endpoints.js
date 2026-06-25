@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   },
   DELIVERY_AREAS: {
     LIST: "/api/delivery-areas",
+    KECAMATAN: "/api/delivery-areas/kecamatan",
   },
   ORDERS: {
     CREATE: "/api/orders",

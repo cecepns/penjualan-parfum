@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, MessageCircle, Package, Store, Truck } from "lucide-react";
 import { api } from "@/utils/api";
 import { API_ENDPOINTS } from "@/utils/endpoints";
-import { formatCurrency, getImageUrl, usesPricePerMl } from "@/utils/format";
+import { formatCurrency, getImageUrl, getProductPriceDisplay, formatStockDisplay, isCustomSale, getSaleTypeLabel } from "@/utils/format";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import OrderModal from "@/components/order/OrderModal";
@@ -75,26 +75,37 @@ export default function ProductDetailPage() {
           <p className="mt-4 text-gray-600">{product.description}</p>
 
           <div className="mt-6 space-y-3">
-            {usesPricePerMl(product) ? (
+            <p className="text-sm text-gray-500">
+              <strong>Tipe:</strong> {getSaleTypeLabel(product)}
+            </p>
+            {isCustomSale(product) ? (
               <p className="text-3xl font-bold text-primary-700">
                 {formatCurrency(product.price_per_ml)}
-                <span className="text-lg font-normal text-gray-500"> / ml</span>
+                <span className="text-lg font-normal text-gray-500"> / ml + harga botol</span>
               </p>
             ) : (
-              <p className="text-3xl font-bold text-primary-700">{formatCurrency(product.price)}</p>
+              <p className="text-3xl font-bold text-primary-700">{formatCurrency(product.price || 25000)}</p>
             )}
-            {product.bottle_type && (
-              <p className="text-sm text-gray-600">
-                <strong>Jenis Botol:</strong> {product.bottle_type}
-              </p>
-            )}
-            {product.bottle_size && (
-              <p className="text-sm text-gray-600">
-                <strong>Ukuran:</strong> {product.bottle_size}
-              </p>
+            {isCustomSale(product) && product.bottle_options?.length > 0 && (
+              <div className="text-sm text-gray-600">
+                <strong>Pilihan Botol:</strong>
+                <ul className="mt-1 list-inside list-disc">
+                  {[...new Set(product.bottle_options.map((o) => o.bottle_type))].map((type) => (
+                    <li key={type}>
+                      {type}: {product.bottle_options
+                        .filter((o) => o.bottle_type === type)
+                        .map((o) => `${o.size_ml}ml`)
+                        .join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <p className="text-sm text-gray-600">
-              <strong>Stok:</strong> {product.stock > 0 ? `${product.stock} tersedia` : "Habis"}
+              <strong>Stok:</strong>{" "}
+              {product.total_available_ml > 0
+                ? `${formatStockDisplay(product)} (total ${product.total_available_ml}ml)`
+                : "Habis"}
             </p>
           </div>
 
@@ -117,11 +128,11 @@ export default function ProductDetailPage() {
 
           <button
             onClick={() => setOrderOpen(true)}
-            disabled={product.stock <= 0}
-            className="btn-whatsapp mt-8 w-full py-3 text-base"
+            disabled={(product.total_available_ml ?? product.stock) <= 0}
+            className="btn-primary mt-8 w-full py-3 text-base"
           >
             <MessageCircle className="h-5 w-5" />
-            Pesan via WhatsApp
+            Pesan Sekarang
           </button>
         </div>
       </div>
@@ -130,7 +141,7 @@ export default function ProductDetailPage() {
         isOpen={orderOpen}
         onClose={() => setOrderOpen(false)}
         product={product}
-        whatsappNumber={settings?.whatsapp_number || "62882007832073"}
+        settings={settings}
       />
     </div>
   );

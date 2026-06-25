@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Package } from "lucide-react";
-import { getProductPriceDisplay, getImageUrl, usesPricePerMl } from "@/utils/format";
+import { getProductPriceDisplay, getImageUrl, isCustomSale } from "@/utils/format";
 
 export default function ProductCard({ product }) {
   const priceDisplay = getProductPriceDisplay(product);
@@ -29,9 +29,9 @@ export default function ProductCard({ product }) {
           {product.name}
         </h3>
         <p className="mt-1.5 text-base font-bold text-primary-700 sm:mt-2 sm:text-lg">{priceDisplay}</p>
-        {usesPricePerMl(product) && product.bottle_type && (
+        {isCustomSale(product) && product.bottle_options?.length > 0 && (
           <p className="mt-1 text-xs text-gray-500">
-            {product.bottle_type} • {product.bottle_size}
+            {[...new Set(product.bottle_options.map((o) => o.bottle_type))].join(", ")}
           </p>
         )}
       </div>

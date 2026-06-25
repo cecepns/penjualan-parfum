@@ -76,7 +76,7 @@ export default function SettingsPage() {
 
       <form onSubmit={handleSubmit} className="card space-y-5">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Nomor WhatsApp *</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Nomor WhatsApp Penjual *</label>
           <input
             name="whatsapp_number"
             value={form.whatsapp_number}
@@ -85,7 +85,7 @@ export default function SettingsPage() {
             placeholder="Contoh: 62882007832073"
           />
           <p className="mt-1 text-xs text-gray-500">
-            Gunakan format internasional tanpa tanda plus, contoh: 628xxxxxxxxxx
+            Nomor ini ditampilkan ke customer untuk konfirmasi pesanan via WhatsApp (manual, tanpa gateway)
           </p>
         </div>
 

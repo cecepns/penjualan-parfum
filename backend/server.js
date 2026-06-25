@@ -12,6 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "penjualan_parfum_secret";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads-penjualan-parfum";
+const STOCK_ML_PER_UNIT = 400;
 
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -72,6 +73,101 @@ function generateOrderCode() {
   return `ORD${ymd}${rand}`;
 }
 
+function roleMiddleware(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Akses ditolak untuk role ini" });
+    }
+    next();
+  };
+}
+
+function formatStockDisplay(stock, remainingMl) {
+  return `${stock || 0} buah - ${remainingMl || 0}ml`;
+}
+
+function getTotalAvailableMl(stock, remainingMl) {
+  return (parseInt(stock) || 0) * STOCK_ML_PER_UNIT + (parseInt(remainingMl) || 0);
+}
+
+function deductStock(stock, remainingMl, mlToDeduct) {
+  let units = parseInt(stock) || 0;
+  let remaining = parseInt(remainingMl) || 0;
+  let needed = parseInt(mlToDeduct) || 0;
+
+  if (getTotalAvailableMl(units, remaining) < needed) {
+    return null;
+  }
+
+  if (remaining >= needed) {
+    remaining -= needed;
+  } else {
+    needed -= remaining;
+    remaining = 0;
+    while (needed > 0) {
+      if (units <= 0) return null;
+      units -= 1;
+      if (needed <= STOCK_ML_PER_UNIT) {
+        remaining = STOCK_ML_PER_UNIT - needed;
+        needed = 0;
+      } else {
+        needed -= STOCK_ML_PER_UNIT;
+      }
+    }
+  }
+
+  return { stock: units, remaining_ml: remaining };
+}
+
+async function getBottleOptions(productId) {
+  const [rows] = await pool.query(
+    "SELECT id, bottle_type, size_ml, bottle_price, sort_order FROM product_bottle_options WHERE product_id = ? ORDER BY sort_order ASC, size_ml ASC",
+    [productId]
+  );
+  return rows;
+}
+
+async function saveBottleOptions(productId, options) {
+  await pool.query("DELETE FROM product_bottle_options WHERE product_id = ?", [productId]);
+  if (!Array.isArray(options) || options.length === 0) return;
+
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    if (!opt.bottle_type || !opt.size_ml) continue;
+    await pool.query(
+      "INSERT INTO product_bottle_options (product_id, bottle_type, size_ml, bottle_price, sort_order) VALUES (?, ?, ?, ?, ?)",
+      [
+        productId,
+        sanitize(String(opt.bottle_type)),
+        parseInt(opt.size_ml) || 0,
+        parseFloat(opt.bottle_price) || 0,
+        parseInt(opt.sort_order) ?? i,
+      ]
+    );
+  }
+}
+
+function mapProductRow(p, bottleOptions = []) {
+  return {
+    ...p,
+    image_url: p.image ? `/uploads/${p.image}` : null,
+    bottle_options: bottleOptions,
+    stock_display: formatStockDisplay(p.stock, p.remaining_ml),
+    total_available_ml: getTotalAvailableMl(p.stock, p.remaining_ml),
+  };
+}
+
+function parseBottleOptionsInput(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function buildPagination(page, limit, total) {
   const totalPages = Math.ceil(total / limit) || 1;
   return { page, limit, total, totalPages };
@@ -91,19 +187,23 @@ function authMiddleware(req, res, next) {
 }
 
 async function ensureAdminPassword() {
-  const [rows] = await pool.query("SELECT id, password FROM users WHERE username = ?", ["admin"]);
+  const [rows] = await pool.query("SELECT id, password, role FROM users WHERE username = ?", ["admin"]);
   if (rows.length === 0) {
     const hash = await bcrypt.hash("admin123", 10);
-    await pool.query("INSERT INTO users (username, password, name) VALUES (?, ?, ?)", [
+    await pool.query("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)", [
       "admin",
       hash,
       "Administrator",
+      "admin",
     ]);
   } else {
     const valid = await bcrypt.compare("admin123", rows[0].password);
     if (!valid && rows[0].password.length < 50) {
       const hash = await bcrypt.hash("admin123", 10);
       await pool.query("UPDATE users SET password = ? WHERE id = ?", [hash, rows[0].id]);
+    }
+    if (!rows[0].role) {
+      await pool.query("UPDATE users SET role = 'admin' WHERE id = ?", [rows[0].id]);
     }
   }
 }
@@ -125,13 +225,21 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(401).json({ success: false, message: "Username atau password salah" });
     }
     const token = jwt.sign(
-      { id: rows[0].id, username: rows[0].username, name: rows[0].name },
+      { id: rows[0].id, username: rows[0].username, name: rows[0].name, role: rows[0].role || "operator" },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
     res.json({
       success: true,
-      data: { token, user: { id: rows[0].id, username: rows[0].username, name: rows[0].name } },
+      data: {
+        token,
+        user: {
+          id: rows[0].id,
+          username: rows[0].username,
+          name: rows[0].name,
+          role: rows[0].role || "operator",
+        },
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -284,12 +392,13 @@ app.get("/api/products", async (req, res) => {
       [...params, limit, offset]
     );
 
+    const data = await Promise.all(
+      rows.map(async (p) => mapProductRow(p, await getBottleOptions(p.id)))
+    );
+
     res.json({
       success: true,
-      data: rows.map((p) => ({
-        ...p,
-        image_url: p.image ? `/uploads/${p.image}` : null,
-      })),
+      data,
       pagination: buildPagination(page, limit, total),
     });
   } catch (err) {
@@ -309,9 +418,10 @@ app.get("/api/products/:slug", async (req, res) => {
       return res.status(404).json({ success: false, message: "Produk tidak ditemukan" });
     }
     const p = rows[0];
+    const bottleOptions = await getBottleOptions(p.id);
     res.json({
       success: true,
-      data: { ...p, image_url: p.image ? `/uploads/${p.image}` : null },
+      data: mapProductRow(p, bottleOptions),
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -350,12 +460,13 @@ app.get("/api/admin/products", authMiddleware, async (req, res) => {
       [...params, limit, offset]
     );
 
+    const data = await Promise.all(
+      rows.map(async (p) => mapProductRow(p, await getBottleOptions(p.id)))
+    );
+
     res.json({
       success: true,
-      data: rows.map((p) => ({
-        ...p,
-        image_url: p.image ? `/uploads/${p.image}` : null,
-      })),
+      data,
       pagination: buildPagination(page, limit, countRows[0].total),
     });
   } catch (err) {
@@ -371,34 +482,36 @@ app.post("/api/admin/products", authMiddleware, upload.single("image"), async (r
       description,
       price,
       price_per_ml,
-      price_type,
+      sale_type,
       bottle_type,
       bottle_size,
       stock,
+      remaining_ml,
       is_active,
+      bottle_options,
     } = req.body;
 
     if (!category_id || !name) {
       return res.status(400).json({ success: false, message: "Kategori dan nama wajib diisi" });
     }
 
-    const usePerMl = price_type === "per_ml";
-    const priceValue = usePerMl ? 0 : parseFloat(price) || 0;
-    const pricePerMl = usePerMl ? parseFloat(price_per_ml) || 0 : null;
+    const type = sale_type === "regular" ? "regular" : "custom";
+    const priceValue = type === "regular" ? parseFloat(price) || 25000 : 0;
+    const pricePerMl = type === "custom" ? parseFloat(price_per_ml) || 0 : null;
 
-    if (usePerMl && !pricePerMl) {
-      return res.status(400).json({ success: false, message: "Harga per ml wajib diisi" });
+    if (type === "custom" && !pricePerMl) {
+      return res.status(400).json({ success: false, message: "Harga per ml wajib diisi untuk penjualan custom" });
     }
-    if (!usePerMl && !priceValue) {
-      return res.status(400).json({ success: false, message: "Harga wajib diisi" });
+    if (type === "regular" && !priceValue) {
+      return res.status(400).json({ success: false, message: "Harga reguler wajib diisi" });
     }
 
     const slug = slugify(name) + "-" + Date.now().toString(36);
     const image = req.file ? req.file.filename : null;
 
     const [result] = await pool.query(
-      `INSERT INTO products (category_id, name, slug, description, image, price, price_per_ml, bottle_type, bottle_size, stock, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (category_id, name, slug, description, image, price, price_per_ml, sale_type, bottle_type, bottle_size, stock, remaining_ml, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         parseInt(category_id),
         sanitize(name),
@@ -407,12 +520,16 @@ app.post("/api/admin/products", authMiddleware, upload.single("image"), async (r
         image,
         priceValue,
         pricePerMl,
+        type,
         sanitize(bottle_type || ""),
         sanitize(bottle_size || ""),
         parseInt(stock) || 0,
+        parseInt(remaining_ml) || 0,
         is_active === "0" || is_active === false ? 0 : 1,
       ]
     );
+
+    await saveBottleOptions(result.insertId, parseBottleOptionsInput(bottle_options));
 
     res.status(201).json({ success: true, data: { id: result.insertId }, message: "Produk berhasil ditambahkan" });
   } catch (err) {
@@ -434,22 +551,24 @@ app.put("/api/admin/products/:id", authMiddleware, upload.single("image"), async
       description,
       price,
       price_per_ml,
-      price_type,
+      sale_type,
       bottle_type,
       bottle_size,
       stock,
+      remaining_ml,
       is_active,
+      bottle_options,
     } = req.body;
 
-    const usePerMl = price_type === "per_ml";
-    const priceValue = usePerMl ? 0 : parseFloat(price) || 0;
-    const pricePerMl = usePerMl ? parseFloat(price_per_ml) || 0 : null;
+    const type = sale_type === "regular" ? "regular" : "custom";
+    const priceValue = type === "regular" ? parseFloat(price) || 0 : 0;
+    const pricePerMl = type === "custom" ? parseFloat(price_per_ml) || 0 : null;
 
-    if (usePerMl && !pricePerMl) {
-      return res.status(400).json({ success: false, message: "Harga per ml wajib diisi" });
+    if (type === "custom" && !pricePerMl) {
+      return res.status(400).json({ success: false, message: "Harga per ml wajib diisi untuk penjualan custom" });
     }
-    if (!usePerMl && !priceValue) {
-      return res.status(400).json({ success: false, message: "Harga wajib diisi" });
+    if (type === "regular" && !priceValue) {
+      return res.status(400).json({ success: false, message: "Harga reguler wajib diisi" });
     }
 
     let image = existing[0].image;
@@ -461,8 +580,8 @@ app.put("/api/admin/products/:id", authMiddleware, upload.single("image"), async
     }
 
     await pool.query(
-      `UPDATE products SET category_id=?, name=?, description=?, image=?, price=?, price_per_ml=?,
-       bottle_type=?, bottle_size=?, stock=?, is_active=? WHERE id=?`,
+      `UPDATE products SET category_id=?, name=?, description=?, image=?, price=?, price_per_ml=?, sale_type=?,
+       bottle_type=?, bottle_size=?, stock=?, remaining_ml=?, is_active=? WHERE id=?`,
       [
         parseInt(category_id) || existing[0].category_id,
         sanitize(name) || existing[0].name,
@@ -470,13 +589,17 @@ app.put("/api/admin/products/:id", authMiddleware, upload.single("image"), async
         image,
         priceValue,
         pricePerMl,
+        type,
         sanitize(bottle_type || ""),
         sanitize(bottle_size || ""),
         parseInt(stock) ?? existing[0].stock,
+        parseInt(remaining_ml) ?? existing[0].remaining_ml ?? 0,
         is_active === "0" || is_active === false ? 0 : 1,
         id,
       ]
     );
+
+    await saveBottleOptions(id, parseBottleOptionsInput(bottle_options));
 
     res.json({ success: true, message: "Produk berhasil diperbarui" });
   } catch (err) {
@@ -502,12 +625,35 @@ app.delete("/api/admin/products/:id", authMiddleware, async (req, res) => {
 });
 
 // ============ DELIVERY AREAS ============
-app.get("/api/delivery-areas", async (req, res) => {
+app.get("/api/delivery-areas/kecamatan", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY delivery_fee ASC, name ASC"
+      "SELECT DISTINCT kecamatan FROM delivery_areas WHERE is_active = 1 ORDER BY kecamatan ASC"
     );
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: rows.map((r) => r.kecamatan) });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/delivery-areas", async (req, res) => {
+  try {
+    const kecamatan = sanitize(req.query.kecamatan || "");
+    let query = "SELECT * FROM delivery_areas WHERE is_active = 1";
+    const params = [];
+    if (kecamatan) {
+      query += " AND kecamatan = ?";
+      params.push(kecamatan);
+    }
+    query += " ORDER BY delivery_fee ASC, kelurahan ASC, name ASC";
+    const [rows] = await pool.query(query, params);
+    res.json({
+      success: true,
+      data: rows.map((r) => ({
+        ...r,
+        kelurahan: r.kelurahan || r.name?.replace(/^Kelurahan\s+/i, "") || r.name,
+      })),
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -523,9 +669,9 @@ app.get("/api/admin/delivery-areas", authMiddleware, async (req, res) => {
     let where = "WHERE 1=1";
     const params = [];
     if (search) {
-      where += " AND (name LIKE ? OR kecamatan LIKE ?)";
+      where += " AND (name LIKE ? OR kelurahan LIKE ? OR kecamatan LIKE ?)";
       const s = `%${search}%`;
-      params.push(s, s);
+      params.push(s, s, s);
     }
 
     const [countRows] = await pool.query(
@@ -549,14 +695,17 @@ app.get("/api/admin/delivery-areas", authMiddleware, async (req, res) => {
 
 app.post("/api/admin/delivery-areas", authMiddleware, async (req, res) => {
   try {
-    const { name, kecamatan, delivery_fee, is_active } = req.body;
-    if (!name) {
-      return res.status(400).json({ success: false, message: "Nama area wajib diisi" });
+    const { name, kelurahan, kecamatan, delivery_fee, is_active } = req.body;
+    const kel = sanitize(kelurahan || name || "");
+    if (!kel) {
+      return res.status(400).json({ success: false, message: "Kelurahan wajib diisi" });
     }
+    const displayName = name ? sanitize(name) : `Kelurahan ${kel}`;
     const [result] = await pool.query(
-      "INSERT INTO delivery_areas (name, kecamatan, delivery_fee, is_active) VALUES (?, ?, ?, ?)",
+      "INSERT INTO delivery_areas (name, kelurahan, kecamatan, delivery_fee, is_active) VALUES (?, ?, ?, ?, ?)",
       [
-        sanitize(name),
+        displayName,
+        kel,
         sanitize(kecamatan || "Cepu"),
         parseFloat(delivery_fee) || 0,
         is_active === "0" || is_active === false || is_active === 0 ? 0 : 1,
@@ -576,15 +725,18 @@ app.put("/api/admin/delivery-areas/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Area tidak ditemukan" });
     }
 
-    const { name, kecamatan, delivery_fee, is_active } = req.body;
-    if (!name) {
-      return res.status(400).json({ success: false, message: "Nama area wajib diisi" });
+    const { name, kelurahan, kecamatan, delivery_fee, is_active } = req.body;
+    const kel = sanitize(kelurahan || name || existing[0].kelurahan || "");
+    if (!kel) {
+      return res.status(400).json({ success: false, message: "Kelurahan wajib diisi" });
     }
+    const displayName = name ? sanitize(name) : `Kelurahan ${kel}`;
 
     await pool.query(
-      "UPDATE delivery_areas SET name=?, kecamatan=?, delivery_fee=?, is_active=? WHERE id=?",
+      "UPDATE delivery_areas SET name=?, kelurahan=?, kecamatan=?, delivery_fee=?, is_active=? WHERE id=?",
       [
-        sanitize(name),
+        displayName,
+        kel,
         sanitize(kecamatan || "Cepu"),
         parseFloat(delivery_fee) ?? existing[0].delivery_fee,
         is_active === "0" || is_active === false || is_active === 0 ? 0 : 1,
@@ -609,6 +761,7 @@ app.delete("/api/admin/delivery-areas/:id", authMiddleware, async (req, res) => 
 
 // ============ ORDERS ============
 app.post("/api/orders", async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const {
       product_id,
@@ -622,6 +775,12 @@ app.post("/api/orders", async (req, res) => {
       delivery_type,
       delivery_area_id,
       notes,
+      sale_type,
+      bottle_type,
+      bottle_size,
+      size_ml,
+      bottle_price,
+      perfume_price,
     } = req.body;
 
     if (!product_name || !customer_name || !customer_phone) {
@@ -631,15 +790,19 @@ app.post("/api/orders", async (req, res) => {
       });
     }
 
+    const qty = parseInt(quantity) || 1;
+    const mlPerItem = parseInt(size_ml) || 0;
+    const mlUsed = mlPerItem > 0 ? mlPerItem * qty : qty * STOCK_ML_PER_UNIT;
+
     let delivery_fee = 0;
     if (delivery_type === "delivery") {
       if (!delivery_area_id) {
         return res.status(400).json({
           success: false,
-          message: "Pilih area pengantaran (khusus sekitar Kota Cepu)",
+          message: "Pilih kelurahan pengantaran (khusus sekitar Kota Cepu)",
         });
       }
-      const [area] = await pool.query(
+      const [area] = await conn.query(
         "SELECT * FROM delivery_areas WHERE id = ? AND is_active = 1",
         [delivery_area_id]
       );
@@ -649,12 +812,47 @@ app.post("/api/orders", async (req, res) => {
       delivery_fee = parseFloat(area[0].delivery_fee);
     }
 
+    await conn.beginTransaction();
+
+    if (product_id) {
+      const [products] = await conn.query("SELECT * FROM products WHERE id = ? FOR UPDATE", [product_id]);
+      if (products.length === 0) {
+        await conn.rollback();
+        return res.status(404).json({ success: false, message: "Produk tidak ditemukan" });
+      }
+      const product = products[0];
+      let updatedStock;
+      if (sale_type === "custom" && mlPerItem > 0) {
+        const deductMl = mlPerItem * qty;
+        updatedStock = deductStock(product.stock, product.remaining_ml, deductMl);
+        if (!updatedStock) {
+          await conn.rollback();
+          return res.status(400).json({ success: false, message: "Stok parfum tidak mencukupi" });
+        }
+      } else {
+        if ((parseInt(product.stock) || 0) < qty) {
+          await conn.rollback();
+          return res.status(400).json({ success: false, message: "Stok produk tidak mencukupi" });
+        }
+        updatedStock = {
+          stock: (parseInt(product.stock) || 0) - qty,
+          remaining_ml: parseInt(product.remaining_ml) || 0,
+        };
+      }
+      await conn.query("UPDATE products SET stock = ?, remaining_ml = ? WHERE id = ?", [
+        updatedStock.stock,
+        updatedStock.remaining_ml,
+        product_id,
+      ]);
+    }
+
     const order_code = generateOrderCode();
-    const [result] = await pool.query(
+    const [result] = await conn.query(
       `INSERT INTO orders (order_code, product_id, product_name, category_name, customer_name,
-       customer_phone, customer_address, quantity, total_price, delivery_type, delivery_area_id,
+       customer_phone, customer_address, quantity, sale_type, bottle_type, bottle_size, size_ml,
+       bottle_price, perfume_price, ml_used, total_price, delivery_type, delivery_area_id,
        delivery_fee, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         order_code,
         product_id || null,
@@ -663,7 +861,14 @@ app.post("/api/orders", async (req, res) => {
         sanitize(customer_name),
         sanitize(customer_phone),
         sanitize(customer_address || ""),
-        parseInt(quantity) || 1,
+        qty,
+        sale_type === "regular" ? "regular" : "custom",
+        sanitize(bottle_type || ""),
+        sanitize(bottle_size || ""),
+        mlPerItem || null,
+        parseFloat(bottle_price) || 0,
+        parseFloat(perfume_price) || 0,
+        mlUsed,
         parseFloat(total_price) || 0,
         delivery_type === "delivery" ? "delivery" : "pickup",
         delivery_area_id || null,
@@ -672,13 +877,18 @@ app.post("/api/orders", async (req, res) => {
       ]
     );
 
+    await conn.commit();
+
     res.status(201).json({
       success: true,
       data: { id: result.insertId, order_code, delivery_fee },
       message: "Pesanan berhasil dicatat",
     });
   } catch (err) {
+    await conn.rollback();
     res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
   }
 });
 
@@ -722,7 +932,7 @@ app.get("/api/admin/orders", authMiddleware, async (req, res) => {
   }
 });
 
-app.patch("/api/admin/orders/:id/status", authMiddleware, async (req, res) => {
+app.patch("/api/admin/orders/:id/status", authMiddleware, roleMiddleware("admin"), async (req, res) => {
   try {
     const validStatuses = [
       "pending",
@@ -744,7 +954,7 @@ app.patch("/api/admin/orders/:id/status", authMiddleware, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/orders/:id", authMiddleware, async (req, res) => {
+app.delete("/api/admin/orders/:id", authMiddleware, roleMiddleware("admin"), async (req, res) => {
   try {
     await pool.query("DELETE FROM orders WHERE id = ?", [req.params.id]);
     res.json({ success: true, message: "Pesanan berhasil dihapus" });

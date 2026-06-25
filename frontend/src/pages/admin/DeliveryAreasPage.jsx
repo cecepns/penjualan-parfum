@@ -145,7 +145,7 @@ export default function DeliveryAreasPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr className="text-left text-gray-500">
-                <th className="px-4 py-3">Area</th>
+                <th className="px-4 py-3">Kelurahan</th>
                 <th className="px-4 py-3">Kecamatan</th>
                 <th className="px-4 py-3">Ongkir</th>
                 <th className="px-4 py-3">Status</th>
@@ -155,7 +155,7 @@ export default function DeliveryAreasPage() {
             <tbody>
               {areas.map((area) => (
                 <tr key={area.id} className="border-t border-gray-100">
-                  <td className="px-4 py-3 font-medium">{area.name}</td>
+                  <td className="px-4 py-3 font-medium">{area.kelurahan || area.name}</td>
                   <td className="px-4 py-3">{area.kecamatan}</td>
                   <td className="px-4 py-3">{formatCurrency(area.delivery_fee)}</td>
                   <td className="px-4 py-3">

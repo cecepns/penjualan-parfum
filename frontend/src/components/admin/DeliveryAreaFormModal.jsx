@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import Modal from "@/components/ui/Modal";
+import { CEPU_KECAMATAN, CEPU_KELURAHAN } from "@/utils/cepuAreas";
 
 const emptyForm = {
-  name: "",
+  kelurahan: "",
   kecamatan: "Cepu",
   delivery_fee: "",
   is_active: true,
@@ -20,7 +21,7 @@ export default function DeliveryAreaFormModal({
   useEffect(() => {
     if (area) {
       setForm({
-        name: area.name || "",
+        kelurahan: area.kelurahan || area.name?.replace(/^Kelurahan\s+/i, "") || "",
         kecamatan: area.kecamatan || "Cepu",
         delivery_fee: area.delivery_fee || "",
         is_active: area.is_active !== 0,
@@ -30,18 +31,29 @@ export default function DeliveryAreaFormModal({
     }
   }, [area, isOpen]);
 
+  const kelurahanOptions = CEPU_KELURAHAN[form.kecamatan] || [];
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        [name]: type === "checkbox" ? checked : value,
+      };
+      if (name === "kecamatan") {
+        next.kelurahan = "";
+      }
+      return next;
+    });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit({
-      ...form,
+      kelurahan: form.kelurahan,
+      name: `Kelurahan ${form.kelurahan}`,
+      kecamatan: form.kecamatan,
+      delivery_fee: form.delivery_fee,
       is_active: form.is_active ? 1 : 0,
     });
   };
@@ -54,25 +66,37 @@ export default function DeliveryAreaFormModal({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">Nama Area *</label>
-          <input
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            required
-            className="input-field"
-            placeholder="Kelurahan Cepu"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">Kecamatan</label>
-          <input
+          <label className="mb-1 block text-sm font-medium">Kecamatan *</label>
+          <select
             name="kecamatan"
             value={form.kecamatan}
             onChange={handleChange}
+            required
             className="input-field"
-            placeholder="Cepu"
-          />
+          >
+            {CEPU_KECAMATAN.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">Kelurahan *</label>
+          <select
+            name="kelurahan"
+            value={form.kelurahan}
+            onChange={handleChange}
+            required
+            className="input-field"
+          >
+            <option value="">Pilih kelurahan...</option>
+            {kelurahanOptions.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Ongkir (Rp) *</label>
