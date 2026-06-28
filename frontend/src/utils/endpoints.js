@@ -45,6 +45,7 @@ export const API_ENDPOINTS = {
       DELETE: (id) => `/api/admin/orders/${id}`,
     },
     DASHBOARD: "/api/admin/dashboard",
+    SALES_REPORT: "/api/admin/sales-report",
     SETTINGS: "/api/admin/settings",
   },
 };

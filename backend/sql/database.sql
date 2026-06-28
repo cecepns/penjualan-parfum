@@ -103,6 +103,28 @@ CREATE TABLE IF NOT EXISTS orders (
   INDEX idx_created (created_at)
 );
 
+-- Order line items (multi-product orders)
+CREATE TABLE IF NOT EXISTS order_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  order_id INT NOT NULL,
+  product_id INT DEFAULT NULL,
+  product_name VARCHAR(200) NOT NULL,
+  category_name VARCHAR(100) DEFAULT NULL,
+  quantity INT DEFAULT 1,
+  sale_type ENUM('regular', 'custom') DEFAULT 'custom',
+  bottle_type VARCHAR(100) DEFAULT NULL,
+  bottle_size VARCHAR(50) DEFAULT NULL,
+  size_ml INT DEFAULT NULL,
+  bottle_price DECIMAL(12,2) DEFAULT 0,
+  perfume_price DECIMAL(12,2) DEFAULT 0,
+  ml_used INT DEFAULT 0,
+  subtotal DECIMAL(12,2) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+  INDEX idx_order (order_id)
+);
+
 -- Settings (WhatsApp number, store info)
 CREATE TABLE IF NOT EXISTS settings (
   id INT AUTO_INCREMENT PRIMARY KEY,

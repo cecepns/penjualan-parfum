@@ -20,16 +20,20 @@ export function formatDate(dateStr) {
   }).format(new Date(dateStr));
 }
 
+export function usesPricePerMl(product) {
+  return product?.price_per_ml != null && parseFloat(product.price_per_ml) > 0;
+}
+
 export function isCustomSale(product) {
-  return product?.sale_type === "custom" || usesPricePerMl(product);
+  if (product?.sale_type === "regular") return false;
+  if (product?.sale_type === "custom") return true;
+  return usesPricePerMl(product);
 }
 
 export function isRegularSale(product) {
-  return product?.sale_type === "regular" || (!isCustomSale(product) && parseFloat(product?.price) > 0);
-}
-
-export function usesPricePerMl(product) {
-  return isCustomSale(product) && product?.price_per_ml != null && parseFloat(product.price_per_ml) > 0;
+  if (product?.sale_type === "regular") return true;
+  if (product?.sale_type === "custom") return false;
+  return parseFloat(product?.price) > 0 && !usesPricePerMl(product);
 }
 
 export function formatStockDisplay(product) {
@@ -111,6 +115,53 @@ export function buildOrderMessage(product, orderDetails = {}) {
   msg += `\n\nNama: ${customerName || "-"}`;
   if (customerPhone) msg += `\nNo. HP: ${customerPhone}`;
   if (quantity) msg += `\nJumlah: ${quantity}`;
+  if (totalPrice) msg += `\nTotal: ${formatCurrency(totalPrice)}`;
+  if (orderCode) msg += `\nKode Pesanan: ${orderCode}`;
+
+  if (deliveryType === "pickup") {
+    msg += `\nMetode: Pick-Up Store`;
+  } else if (deliveryType === "delivery") {
+    msg += `\nMetode: Pengantaran (Area Cepu)`;
+    if (kecamatan) msg += `\nKecamatan: ${kecamatan}`;
+    if (deliveryArea) msg += `\nKelurahan: ${deliveryArea}`;
+    if (address) msg += `\nAlamat: ${address}`;
+  }
+
+  if (notes) msg += `\nCatatan: ${notes}`;
+  return msg;
+}
+
+export function buildCartOrderMessage(items = [], orderDetails = {}) {
+  const {
+    customerName,
+    customerPhone,
+    deliveryType,
+    kecamatan,
+    deliveryArea,
+    address,
+    notes,
+    totalPrice,
+    deliveryFee,
+    orderCode,
+  } = orderDetails;
+
+  let msg = `Halo kak, saya ingin memesan:`;
+  items.forEach((item, i) => {
+    msg += `\n\n${i + 1}. ${item.product_name}`;
+    msg += `\n   Kategori: ${item.category_name || "-"}`;
+    if (item.sale_type === "regular") {
+      msg += `\n   Tipe: Reguler — ${formatCurrency(item.unit_price || item.price)}`;
+    } else {
+      msg += `\n   Tipe: Custom — ${formatCurrency(item.price_per_ml || 0)}/ml`;
+      if (item.bottle_type) msg += `\n   Botol: ${item.bottle_type} ${item.bottle_size || ""}`;
+    }
+    msg += `\n   Jumlah: ${item.quantity}`;
+    msg += `\n   Subtotal: ${formatCurrency(item.subtotal)}`;
+  });
+
+  msg += `\n\nNama: ${customerName || "-"}`;
+  if (customerPhone) msg += `\nNo. HP: ${customerPhone}`;
+  if (deliveryFee > 0) msg += `\nOngkir: ${formatCurrency(deliveryFee)}`;
   if (totalPrice) msg += `\nTotal: ${formatCurrency(totalPrice)}`;
   if (orderCode) msg += `\nKode Pesanan: ${orderCode}`;
 

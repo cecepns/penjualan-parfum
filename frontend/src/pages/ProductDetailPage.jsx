@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, MessageCircle, Package, Store, Truck } from "lucide-react";
+import { ArrowLeft, MessageCircle, Package, Store, Truck, ShoppingCart } from "lucide-react";
 import { api } from "@/utils/api";
 import { API_ENDPOINTS } from "@/utils/endpoints";
 import { formatCurrency, getImageUrl, getProductPriceDisplay, formatStockDisplay, isCustomSale, getSaleTypeLabel } from "@/utils/format";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
+import { useCart } from "@/context/CartContext";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import OrderModal from "@/components/order/OrderModal";
+import AddToCartModal from "@/components/cart/AddToCartModal";
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -14,6 +16,8 @@ export default function ProductDetailPage() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [cartModalOpen, setCartModalOpen] = useState(false);
+  const { addItem } = useCart();
 
   useScrollToTop(slug);
 
@@ -126,14 +130,30 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => setOrderOpen(true)}
-            disabled={(product.total_available_ml ?? product.stock) <= 0}
-            className="btn-primary mt-8 w-full py-3 text-base"
-          >
-            <MessageCircle className="h-5 w-5" />
-            Pesan Sekarang
-          </button>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => {
+                if (isCustomSale(product)) {
+                  setCartModalOpen(true);
+                } else {
+                  addItem(product, { quantity: 1 });
+                }
+              }}
+              disabled={(product.total_available_ml ?? product.stock) <= 0}
+              className="btn-secondary w-full py-3 text-base"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              Tambah ke Keranjang
+            </button>
+            <button
+              onClick={() => setOrderOpen(true)}
+              disabled={(product.total_available_ml ?? product.stock) <= 0}
+              className="btn-primary w-full py-3 text-base"
+            >
+              <MessageCircle className="h-5 w-5" />
+              Beli Langsung
+            </button>
+          </div>
         </div>
       </div>
 
@@ -142,6 +162,12 @@ export default function ProductDetailPage() {
         onClose={() => setOrderOpen(false)}
         product={product}
         settings={settings}
+      />
+
+      <AddToCartModal
+        isOpen={cartModalOpen}
+        onClose={() => setCartModalOpen(false)}
+        product={product}
       />
     </div>
   );

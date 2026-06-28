@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { Menu, X, Sparkles, ShoppingBag } from "lucide-react";
+import { Menu, X, Sparkles, ShoppingBag, ShoppingCart } from "lucide-react";
+import { useCart } from "@/context/CartContext";
 
 const navLinks = [
   { to: "/", label: "Beranda" },
+  { to: "/kategori", label: "Kategori" },
   { to: "/katalog", label: "Katalog" },
 ];
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const { itemCount } = useCart();
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
@@ -23,7 +26,7 @@ export default function Navbar() {
           </div>
         </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden items-center gap-6 md:flex">
           {navLinks.map((link) => (
             <NavLink
               key={link.to}
@@ -37,18 +40,36 @@ export default function Navbar() {
               {link.label}
             </NavLink>
           ))}
+          <Link to="/keranjang" className="relative rounded-lg p-2 text-gray-600 hover:bg-gray-100">
+            <ShoppingCart className="h-5 w-5" />
+            {itemCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
+                {itemCount > 99 ? "99+" : itemCount}
+              </span>
+            )}
+          </Link>
           <Link to="/katalog" className="btn-primary">
             <ShoppingBag className="h-4 w-4" />
             Belanja Sekarang
           </Link>
         </div>
 
-        <button
-          className="rounded-lg p-2 text-gray-600 md:hidden"
-          onClick={() => setOpen(!open)}
-        >
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <Link to="/keranjang" className="relative rounded-lg p-2 text-gray-600">
+            <ShoppingCart className="h-5 w-5" />
+            {itemCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
+                {itemCount > 99 ? "99+" : itemCount}
+              </span>
+            )}
+          </Link>
+          <button
+            className="rounded-lg p-2 text-gray-600"
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
       </nav>
 
       {open && (

@@ -186,6 +186,109 @@ function authMiddleware(req, res, next) {
   }
 }
 
+async function columnExists(table, column) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) as cnt FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+  return rows[0].cnt > 0;
+}
+
+async function tableExists(table) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) as cnt FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table]
+  );
+  return rows[0].cnt > 0;
+}
+
+async function ensureColumn(table, column, definition) {
+  if (!(await columnExists(table, column))) {
+    await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+    console.log(`Schema: added ${table}.${column}`);
+  }
+}
+
+async function ensureSchema() {
+  await ensureColumn("users", "role", "ENUM('admin', 'operator') NOT NULL DEFAULT 'operator'");
+  await ensureColumn("products", "remaining_ml", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("products", "sale_type", "ENUM('regular', 'custom') NOT NULL DEFAULT 'custom'");
+  await ensureColumn("delivery_areas", "kelurahan", "VARCHAR(150) DEFAULT NULL");
+
+  await ensureColumn("orders", "sale_type", "ENUM('regular', 'custom') DEFAULT 'custom'");
+  await ensureColumn("orders", "bottle_type", "VARCHAR(100) DEFAULT NULL");
+  await ensureColumn("orders", "bottle_size", "VARCHAR(50) DEFAULT NULL");
+  await ensureColumn("orders", "size_ml", "INT DEFAULT NULL");
+  await ensureColumn("orders", "bottle_price", "DECIMAL(12,2) DEFAULT 0");
+  await ensureColumn("orders", "perfume_price", "DECIMAL(12,2) DEFAULT 0");
+  await ensureColumn("orders", "ml_used", "INT DEFAULT 0");
+
+  if (!(await tableExists("product_bottle_options"))) {
+    await pool.query(`
+      CREATE TABLE product_bottle_options (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        product_id INT NOT NULL,
+        bottle_type VARCHAR(100) NOT NULL,
+        size_ml INT NOT NULL,
+        bottle_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+        INDEX idx_product (product_id)
+      )
+    `);
+    console.log("Schema: created product_bottle_options");
+  }
+
+  if (!(await tableExists("order_items"))) {
+    await pool.query(`
+      CREATE TABLE order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        product_id INT DEFAULT NULL,
+        product_name VARCHAR(200) NOT NULL,
+        category_name VARCHAR(100) DEFAULT NULL,
+        quantity INT DEFAULT 1,
+        sale_type ENUM('regular', 'custom') DEFAULT 'custom',
+        bottle_type VARCHAR(100) DEFAULT NULL,
+        bottle_size VARCHAR(50) DEFAULT NULL,
+        size_ml INT DEFAULT NULL,
+        bottle_price DECIMAL(12,2) DEFAULT 0,
+        perfume_price DECIMAL(12,2) DEFAULT 0,
+        ml_used INT DEFAULT 0,
+        subtotal DECIMAL(12,2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+        INDEX idx_order (order_id)
+      )
+    `);
+    console.log("Schema: created order_items");
+  }
+
+  if (await columnExists("products", "sale_type")) {
+    await pool.query(`
+      UPDATE products SET sale_type = 'custom'
+      WHERE sale_type IS NULL AND price_per_ml IS NOT NULL AND price_per_ml > 0
+    `);
+    await pool.query(`
+      UPDATE products SET sale_type = 'regular'
+      WHERE sale_type IS NULL OR sale_type = ''
+    `);
+  }
+
+  if (await columnExists("delivery_areas", "kelurahan")) {
+    await pool.query(`
+      UPDATE delivery_areas SET kelurahan = TRIM(REPLACE(name, 'Kelurahan ', ''))
+      WHERE kelurahan IS NULL OR kelurahan = ''
+    `);
+  }
+
+  await pool.query("UPDATE users SET role = 'admin' WHERE username = 'admin' AND (role IS NULL OR role = '')");
+}
+
 async function ensureAdminPassword() {
   const [rows] = await pool.query("SELECT id, password, role FROM users WHERE username = ?", ["admin"]);
   if (rows.length === 0) {
@@ -247,7 +350,18 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/auth/me", authMiddleware, async (req, res) => {
-  res.json({ success: true, data: req.user });
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, username, name, role FROM users WHERE id = ?",
+      [req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "User tidak ditemukan" });
+    }
+    res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // ============ CATEGORIES ============
@@ -759,11 +873,57 @@ app.delete("/api/admin/delivery-areas/:id", authMiddleware, async (req, res) => 
   }
 });
 
+async function getOrderItems(orderIds) {
+  if (!orderIds.length) return {};
+  const placeholders = orderIds.map(() => "?").join(",");
+  const [rows] = await pool.query(
+    `SELECT * FROM order_items WHERE order_id IN (${placeholders}) ORDER BY id ASC`,
+    orderIds
+  );
+  const map = {};
+  rows.forEach((row) => {
+    if (!map[row.order_id]) map[row.order_id] = [];
+    map[row.order_id].push(row);
+  });
+  return map;
+}
+
+async function deductProductStock(conn, productId, saleType, qty, mlPerItem) {
+  const [products] = await conn.query("SELECT * FROM products WHERE id = ? FOR UPDATE", [productId]);
+  if (products.length === 0) return { error: "Produk tidak ditemukan" };
+
+  const product = products[0];
+  let updatedStock;
+
+  if (saleType === "custom" && mlPerItem > 0) {
+    const deductMl = mlPerItem * qty;
+    updatedStock = deductStock(product.stock, product.remaining_ml, deductMl);
+    if (!updatedStock) return { error: "Stok parfum tidak mencukupi" };
+  } else {
+    if ((parseInt(product.stock) || 0) < qty) {
+      return { error: "Stok produk tidak mencukupi" };
+    }
+    updatedStock = {
+      stock: (parseInt(product.stock) || 0) - qty,
+      remaining_ml: parseInt(product.remaining_ml) || 0,
+    };
+  }
+
+  await conn.query("UPDATE products SET stock = ?, remaining_ml = ? WHERE id = ?", [
+    updatedStock.stock,
+    updatedStock.remaining_ml,
+    productId,
+  ]);
+
+  return { ok: true };
+}
+
 // ============ ORDERS ============
 app.post("/api/orders", async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const {
+      items,
       product_id,
       product_name,
       category_name,
@@ -783,16 +943,37 @@ app.post("/api/orders", async (req, res) => {
       perfume_price,
     } = req.body;
 
-    if (!product_name || !customer_name || !customer_phone) {
+    if (!customer_name || !customer_phone) {
       return res.status(400).json({
         success: false,
-        message: "Nama produk, nama customer, dan nomor telepon wajib diisi",
+        message: "Nama customer dan nomor telepon wajib diisi",
       });
     }
 
-    const qty = parseInt(quantity) || 1;
-    const mlPerItem = parseInt(size_ml) || 0;
-    const mlUsed = mlPerItem > 0 ? mlPerItem * qty : qty * STOCK_ML_PER_UNIT;
+    const orderItems = Array.isArray(items) && items.length > 0
+      ? items
+      : product_name
+        ? [{
+            product_id,
+            product_name,
+            category_name,
+            quantity,
+            sale_type,
+            bottle_type,
+            bottle_size,
+            size_ml,
+            bottle_price,
+            perfume_price,
+            subtotal: total_price,
+          }]
+        : [];
+
+    if (orderItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimal satu produk wajib diisi",
+      });
+    }
 
     let delivery_fee = 0;
     if (delivery_type === "delivery") {
@@ -814,37 +995,29 @@ app.post("/api/orders", async (req, res) => {
 
     await conn.beginTransaction();
 
-    if (product_id) {
-      const [products] = await conn.query("SELECT * FROM products WHERE id = ? FOR UPDATE", [product_id]);
-      if (products.length === 0) {
+    for (const item of orderItems) {
+      if (!item.product_id) continue;
+      const qty = parseInt(item.quantity) || 1;
+      const mlPerItem = parseInt(item.size_ml) || 0;
+      const itemSaleType = item.sale_type === "regular" ? "regular" : "custom";
+      const result = await deductProductStock(conn, item.product_id, itemSaleType, qty, mlPerItem);
+      if (result.error) {
         await conn.rollback();
-        return res.status(404).json({ success: false, message: "Produk tidak ditemukan" });
+        return res.status(400).json({
+          success: false,
+          message: `${item.product_name}: ${result.error}`,
+        });
       }
-      const product = products[0];
-      let updatedStock;
-      if (sale_type === "custom" && mlPerItem > 0) {
-        const deductMl = mlPerItem * qty;
-        updatedStock = deductStock(product.stock, product.remaining_ml, deductMl);
-        if (!updatedStock) {
-          await conn.rollback();
-          return res.status(400).json({ success: false, message: "Stok parfum tidak mencukupi" });
-        }
-      } else {
-        if ((parseInt(product.stock) || 0) < qty) {
-          await conn.rollback();
-          return res.status(400).json({ success: false, message: "Stok produk tidak mencukupi" });
-        }
-        updatedStock = {
-          stock: (parseInt(product.stock) || 0) - qty,
-          remaining_ml: parseInt(product.remaining_ml) || 0,
-        };
-      }
-      await conn.query("UPDATE products SET stock = ?, remaining_ml = ? WHERE id = ?", [
-        updatedStock.stock,
-        updatedStock.remaining_ml,
-        product_id,
-      ]);
     }
+
+    const firstItem = orderItems[0];
+    const isMulti = orderItems.length > 1;
+    const headerProductName = isMulti
+      ? `${orderItems.length} produk`
+      : sanitize(firstItem.product_name);
+    const headerCategory = isMulti ? "Multi Kategori" : sanitize(firstItem.category_name || "");
+    const headerQty = orderItems.reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+    const headerSaleType = firstItem.sale_type === "regular" ? "regular" : "custom";
 
     const order_code = generateOrderCode();
     const [result] = await conn.query(
@@ -855,20 +1028,24 @@ app.post("/api/orders", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         order_code,
-        product_id || null,
-        sanitize(product_name),
-        sanitize(category_name || ""),
+        isMulti ? null : (firstItem.product_id || null),
+        headerProductName,
+        headerCategory,
         sanitize(customer_name),
         sanitize(customer_phone),
         sanitize(customer_address || ""),
-        qty,
-        sale_type === "regular" ? "regular" : "custom",
-        sanitize(bottle_type || ""),
-        sanitize(bottle_size || ""),
-        mlPerItem || null,
-        parseFloat(bottle_price) || 0,
-        parseFloat(perfume_price) || 0,
-        mlUsed,
+        headerQty,
+        headerSaleType,
+        sanitize(firstItem.bottle_type || ""),
+        sanitize(firstItem.bottle_size || ""),
+        parseInt(firstItem.size_ml) || null,
+        parseFloat(firstItem.bottle_price) || 0,
+        parseFloat(firstItem.perfume_price) || 0,
+        orderItems.reduce((s, i) => {
+          const ml = parseInt(i.size_ml) || 0;
+          const qty = parseInt(i.quantity) || 1;
+          return s + (ml > 0 ? ml * qty : qty * STOCK_ML_PER_UNIT);
+        }, 0),
         parseFloat(total_price) || 0,
         delivery_type === "delivery" ? "delivery" : "pickup",
         delivery_area_id || null,
@@ -877,11 +1054,39 @@ app.post("/api/orders", async (req, res) => {
       ]
     );
 
+    const orderId = result.insertId;
+
+    for (const item of orderItems) {
+      const qty = parseInt(item.quantity) || 1;
+      const mlPerItem = parseInt(item.size_ml) || 0;
+      const mlUsed = mlPerItem > 0 ? mlPerItem * qty : qty * STOCK_ML_PER_UNIT;
+      await conn.query(
+        `INSERT INTO order_items (order_id, product_id, product_name, category_name, quantity,
+         sale_type, bottle_type, bottle_size, size_ml, bottle_price, perfume_price, ml_used, subtotal)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          item.product_id || null,
+          sanitize(item.product_name),
+          sanitize(item.category_name || ""),
+          qty,
+          item.sale_type === "regular" ? "regular" : "custom",
+          sanitize(item.bottle_type || ""),
+          sanitize(item.bottle_size || ""),
+          mlPerItem || null,
+          parseFloat(item.bottle_price) || 0,
+          parseFloat(item.perfume_price) || 0,
+          mlUsed,
+          parseFloat(item.subtotal) || 0,
+        ]
+      );
+    }
+
     await conn.commit();
 
     res.status(201).json({
       success: true,
-      data: { id: result.insertId, order_code, delivery_fee },
+      data: { id: orderId, order_code, delivery_fee },
       message: "Pesanan berhasil dicatat",
     });
   } catch (err) {
@@ -922,9 +1127,16 @@ app.get("/api/admin/orders", authMiddleware, async (req, res) => {
       [...params, limit, offset]
     );
 
+    const orderIds = rows.map((r) => r.id);
+    const itemsMap = await getOrderItems(orderIds);
+    const data = rows.map((row) => ({
+      ...row,
+      items: itemsMap[row.id] || [],
+    }));
+
     res.json({
       success: true,
-      data: rows,
+      data,
       pagination: buildPagination(page, limit, countRows[0].total),
     });
   } catch (err) {
@@ -932,7 +1144,7 @@ app.get("/api/admin/orders", authMiddleware, async (req, res) => {
   }
 });
 
-app.patch("/api/admin/orders/:id/status", authMiddleware, roleMiddleware("admin"), async (req, res) => {
+app.patch("/api/admin/orders/:id/status", authMiddleware, roleMiddleware("admin", "operator"), async (req, res) => {
   try {
     const validStatuses = [
       "pending",
@@ -958,6 +1170,90 @@ app.delete("/api/admin/orders/:id", authMiddleware, roleMiddleware("admin"), asy
   try {
     await pool.query("DELETE FROM orders WHERE id = ?", [req.params.id]);
     res.json({ success: true, message: "Pesanan berhasil dihapus" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============ SALES REPORT ============
+app.get("/api/admin/sales-report", authMiddleware, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+    const search = sanitize(req.query.search || "");
+    const startDate = sanitize(req.query.start_date || "");
+    const endDate = sanitize(req.query.end_date || "");
+    const offset = (page - 1) * limit;
+
+    let where = "WHERE o.status != 'cancelled'";
+    const params = [];
+
+    if (startDate) {
+      where += " AND DATE(o.created_at) >= ?";
+      params.push(startDate);
+    }
+    if (endDate) {
+      where += " AND DATE(o.created_at) <= ?";
+      params.push(endDate);
+    }
+    if (search) {
+      where += " AND (o.order_code LIKE ? OR o.customer_name LIKE ? OR o.customer_phone LIKE ?)";
+      const s = `%${search}%`;
+      params.push(s, s, s);
+    }
+
+    const [[summaryRow]] = await pool.query(
+      `SELECT
+        COUNT(*) as total_orders,
+        COALESCE(SUM(o.total_price), 0) as total_revenue,
+        SUM(CASE WHEN o.status = 'completed' THEN 1 ELSE 0 END) as completed_orders,
+        COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.total_price ELSE 0 END), 0) as completed_revenue
+       FROM orders o ${where}`,
+      params
+    );
+
+    const [dailyRows] = await pool.query(
+      `SELECT DATE(o.created_at) as date, COUNT(*) as order_count, COALESCE(SUM(o.total_price), 0) as revenue
+       FROM orders o ${where}
+       GROUP BY DATE(o.created_at) ORDER BY date DESC`,
+      params
+    );
+
+    const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM orders o ${where}`, params);
+
+    const [rows] = await pool.query(
+      `SELECT o.*, da.name as delivery_area_name
+       FROM orders o
+       LEFT JOIN delivery_areas da ON o.delivery_area_id = da.id
+       ${where} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    const orderIds = rows.map((r) => r.id);
+    const itemsMap = await getOrderItems(orderIds);
+    const orders = rows.map((row) => ({
+      ...row,
+      items: itemsMap[row.id] || [],
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          total_orders: summaryRow.total_orders,
+          total_revenue: parseFloat(summaryRow.total_revenue) || 0,
+          completed_orders: summaryRow.completed_orders,
+          completed_revenue: parseFloat(summaryRow.completed_revenue) || 0,
+          daily: dailyRows.map((d) => ({
+            date: d.date,
+            order_count: d.order_count,
+            revenue: parseFloat(d.revenue) || 0,
+          })),
+        },
+        orders,
+        pagination: buildPagination(page, limit, countRows[0].total),
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1055,6 +1351,7 @@ app.use((err, _, res, __) => {
 
 app.listen(PORT, async () => {
   try {
+    await ensureSchema();
     await ensureAdminPassword();
     console.log(`Server berjalan di http://localhost:${PORT}`);
     console.log(`Admin default: username=admin, password=admin123`);

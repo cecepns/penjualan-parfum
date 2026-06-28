@@ -9,13 +9,15 @@ import {
   Tags,
   Truck,
   Settings,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const links = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/kategori", label: "Kategori", icon: Tags },
-  { to: "/admin/produk", label: "Kelola Produk", icon: Package },
+  { to: "/admin/produk", label: "Katalog", icon: Package },
+  { to: "/admin/laporan", label: "Laporan Penjualan", icon: BarChart3 },
   { to: "/admin/pengantaran", label: "Area Pengantaran", icon: Truck },
   { to: "/admin/pesanan", label: "Lihat Pesanan", icon: ShoppingCart },
   { to: "/admin/pengaturan", label: "Pengaturan", icon: Settings },

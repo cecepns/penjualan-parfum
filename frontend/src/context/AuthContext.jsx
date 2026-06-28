@@ -19,7 +19,11 @@ export function AuthProvider({ children }) {
     }
     api
       .get(API_ENDPOINTS.AUTH.ME)
-      .then((res) => setUser(res.data.data))
+      .then((res) => {
+        const userData = res.data.data;
+        setUser(userData);
+        localStorage.setItem("user", JSON.stringify(userData));
+      })
       .catch(() => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
