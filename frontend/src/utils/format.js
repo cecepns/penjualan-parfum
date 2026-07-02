@@ -20,6 +20,18 @@ export function formatDate(dateStr) {
   }).format(new Date(dateStr));
 }
 
+export function formatDateOnly(dateStr) {
+  if (!dateStr) return "";
+  const cleanDateStr = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const [year, month, day] = cleanDateStr.split("-");
+  const dateObj = new Date(year, month - 1, day);
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(dateObj);
+}
+
 export function usesPricePerMl(product) {
   return product?.price_per_ml != null && parseFloat(product.price_per_ml) > 0;
 }

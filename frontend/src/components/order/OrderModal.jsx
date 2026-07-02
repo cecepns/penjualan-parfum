@@ -67,7 +67,7 @@ export default function OrderModal({ isOpen, onClose, product, settings }) {
   }, [isOpen, form.kecamatan]);
 
   const selectedArea = areas.find((a) => a.id === parseInt(form.delivery_area_id));
-  const deliveryFee = form.delivery_type === "delivery" ? (selectedArea?.delivery_fee || 0) : 0;
+  const deliveryFee = form.delivery_type === "delivery" ? (parseFloat(selectedArea?.delivery_fee) || 0) : 0;
   const basePrice = isRegularSale(product)
     ? calculateOrderPrice(product, { quantity: form.quantity })
     : calculateOrderPrice(product, { bottleOption: selectedOption, quantity: form.quantity });

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { api } from "@/utils/api";
 import { API_ENDPOINTS } from "@/utils/endpoints";
-import { formatCurrency, formatDate, ORDER_STATUS } from "@/utils/format";
+import { formatCurrency, formatDate, formatDateOnly, ORDER_STATUS } from "@/utils/format";
 import Pagination from "@/components/ui/Pagination";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
@@ -139,7 +139,7 @@ export default function SalesReportPage() {
                 <tbody>
                   {summary.daily.map((row) => (
                     <tr key={row.date} className="border-b border-gray-50">
-                      <td className="py-3 pr-4">{row.date}</td>
+                      <td className="py-3 pr-4">{formatDateOnly(row.date)}</td>
                       <td className="py-3 pr-4">{row.order_count}</td>
                       <td className="py-3 font-medium">{formatCurrency(row.revenue)}</td>
                     </tr>

@@ -48,7 +48,7 @@ export default function CartCheckoutModal({ isOpen, onClose, settings }) {
   }, [isOpen, form.kecamatan]);
 
   const selectedArea = areas.find((a) => a.id === parseInt(form.delivery_area_id));
-  const deliveryFee = form.delivery_type === "delivery" ? (selectedArea?.delivery_fee || 0) : 0;
+  const deliveryFee = form.delivery_type === "delivery" ? (parseFloat(selectedArea?.delivery_fee) || 0) : 0;
   const totalPrice = subtotal + deliveryFee;
 
   const handleChange = (e) => {
